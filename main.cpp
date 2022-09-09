@@ -9,16 +9,19 @@
 #include <C:\Users\Raheem\Downloads\bass24\c\bass.h>
 #include <iostream>
 #include <future>
+#include <wx/filename.h>
 using namespace std;
 int isPlaying = 0;
 HCHANNEL channel = NULL;
 HSTREAM stream = NULL;
 wxStaticText* staticText;
 wxStaticText* staticText2; 
-
+bool isMediaLoaded = false;
 wxStaticText* commentText;
-
+wxPanel* panel_top;
 wxSlider* VolumeSlider;
+wxSlider* posSlider;
+
 class MyApp : public wxApp
 {
 public:
@@ -34,10 +37,14 @@ private:
     void OnHello(wxCommandEvent& event);
     void OnExit(wxCommandEvent& event);
     void OnPlaylist(wxCommandEvent& event);
-    void GetDuration(HSTREAM h);
+    int GetDuration(HSTREAM h);
     void OnAbout(wxCommandEvent& event);
     void Notify(wxTimerEvent& event);
     void OnClose(wxCloseEvent& event);
+    void OnPositionChange(wxScrollEvent& event);
+    void OnVolChanged(wxScrollEvent& event);
+
+
 };
 
 enum
@@ -123,16 +130,34 @@ MyFrame::MyFrame()
     CreateStatusBar();
     SetStatusText("Welcome to Elm Player!");
 
-    SetBackgroundColour(wxColour(0x006249128));
+    SetBackgroundColour(wxColour(255,255,255));
     wxString test = wxT("Choose a file");
    
-    wxStaticBox* staticBox = new wxStaticBox(this, wxID_STATIC,
-        wxT(" & "), wxDefaultPosition, wxSize(1920,1080));
-    VolumeSlider = new wxSlider(staticBox, 190, 16, 0, 100,
-        wxPoint(0, 120), wxSize(200, -1),
+   
+
+     panel_top = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(600, 400));
+    panel_top->SetBackgroundColour(wxColor(0, 200, 0));
+
+    wxFont myFont(12, wxFONTFAMILY_MODERN, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD);
+    panel_top->SetFont(myFont);
+     wxPanel* panel_bottom = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(400, 20));
+    panel_bottom->SetBackgroundColour(wxColor(204, 204, 204));
+
+
+
+    VolumeSlider = new wxSlider(panel_bottom, wxID_VOLSLIDER, 16, 0, 100,
+        wxPoint(0, 0), wxSize(200, -1),
         wxSL_HORIZONTAL | wxSL_AUTOTICKS | wxSL_LABELS);
-    staticText = new wxStaticText(staticBox, wxID_ANY, wxT(""), wxPoint(0, 30));
-    commentText = new wxStaticText(staticBox, wxID_ANY, wxT("Insert comment here"), wxPoint(0, 70));
+    //int currentSonglen=GetDuration(stream);
+    posSlider = new wxSlider(panel_bottom, 190, 0, 0, 800,
+        wxPoint(0, 100), wxSize(400, -1),
+        wxSL_HORIZONTAL | wxSL_AUTOTICKS | wxSL_LABELS);
+    //posSlider->Hide();
+    wxBoxSizer* sizer2 = new wxBoxSizer(wxVERTICAL);
+    wxBoxSizer* mediaControls = new wxBoxSizer(wxHORIZONTAL);
+    sizer2->Add(mediaControls, 0, wxALL, 5);
+    staticText = new wxStaticText(panel_top, wxID_ANY, wxT(""), wxPoint(0, 30));
+    commentText = new wxStaticText(panel_top, wxID_ANY, wxT("Song description"), wxPoint(0, 70));
 
     Bind(wxEVT_MENU, &MyFrame::OnHello, this, ID_Hello);
     Bind(wxEVT_MENU, &MyFrame::OnAbout, this, wxID_ABOUT);
@@ -140,15 +165,24 @@ MyFrame::MyFrame()
 
     Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
     Bind(wxEVT_TIMER, &MyFrame::Notify, this);
-    wxBoxSizer* bSizer = new wxBoxSizer(wxHORIZONTAL);
-
-   
-    bSizer->Add(staticBox, 1, wxEXPAND);
-
   
+    Connect(190, wxEVT_SLIDER,wxScrollEventHandler(MyFrame::OnPositionChange));
+    Connect(wxID_VOLSLIDER, wxEVT_SLIDER, wxScrollEventHandler(MyFrame::OnVolChanged));
 
-    SetSizer(bSizer);
+    Connect(wxEVT_CLOSE_WINDOW, wxCloseEventHandler(MyFrame::OnClose), NULL, this);
+    wxBoxSizer* bSizer = new wxBoxSizer(wxVERTICAL);
+    wxSizer* sizerBottom = new wxBoxSizer(wxHORIZONTAL);
 
+    
+   
+    bSizer->Add(panel_top, 1, wxEXPAND|wxLEFT|wxTOP|wxRIGHT,10);
+    bSizer->Add(panel_bottom, 1, wxALIGN_CENTER , 1);
+
+    panel_bottom->SetSizer(sizer2);
+    panel_bottom->Layout();
+    sizer2->Fit(panel_bottom);
+
+    SetSizerAndFit(bSizer);
     
 }
 
@@ -161,17 +195,12 @@ void MyFrame::OnExit(wxCommandEvent& event)
 }
 
 
-void MyFrame::GetDuration(HSTREAM h) {
+int MyFrame::GetDuration(HSTREAM h) {
     QWORD len = BASS_ChannelGetLength(h, BASS_POS_BYTE); // the length in bytes
     int timeR = BASS_ChannelBytes2Seconds(h, len); // the length in seconds
-    wxStaticText* staticText2 = new wxStaticText(this, wxID_ANY, wxT(""), wxPoint(0, 44));
-    QWORD pos = NULL;
-    int realPos = NULL;
-    int secs = 0;
-    int mins = 0;
-  
-    secs = static_cast<int>(realPos) % 60;
-    mins = (realPos - secs) / 60;
+    //wxStaticText* staticText2 = new wxStaticText(panel_top, wxID_ANY, wxT(""), wxPoint(0, 44));
+   
+    return timeR;
 }
 
 void MyFrame::OnPlaylist(wxCommandEvent& event)
@@ -197,12 +226,13 @@ void MyFrame::OnHello(wxCommandEvent& event)
     wxString wildcard = "MP3 Files (*.mp3) | *.mp3";
     
     wxString path="";
-   
+    wxString songName = "";
     wxFileDialog dialog(NULL, caption, defaultDir, defaultFilename,
         wildcard, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
    
     if (dialog.ShowModal() == wxID_OK)
     {
+        //posSlider->Show();
         if (isPlaying == 1) {
             BASS_ChannelFree(stream);
             BASS_ChannelSetPosition(stream, 0, BASS_POS_BYTE);
@@ -215,7 +245,7 @@ void MyFrame::OnHello(wxCommandEvent& event)
 
         }
         
-            isPlaying = 1;
+            //isPlaying = 1;
 
             BASS_ChannelFree(stream);
             path = "";
@@ -225,7 +255,8 @@ void MyFrame::OnHello(wxCommandEvent& event)
 
             path = "" + dialog.GetPath();
 
-            staticText->SetLabel("Now playing :"+path);
+            songName = wxFileName(path).GetName();
+            staticText->SetLabel(""+songName);
             BASS_Init(-1, 44100, 0, 0, NULL);
             BASS_SetVolume(.02);
             HSAMPLE sample = BASS_SampleLoad(false, path.char_str(), 0, 0, 1, BASS_SAMPLE_MONO);
@@ -234,14 +265,14 @@ void MyFrame::OnHello(wxCommandEvent& event)
             myTimer->Start();
             channel = BASS_SampleGetChannel(stream, FALSE);
             BASS_ChannelPlay(stream, TRUE);
-            staticText2 = new wxStaticText(this, wxID_ANY, wxT(""), wxPoint(0, 45));
+            staticText2 = new wxStaticText(panel_top, wxID_ANY, wxT(""), wxPoint(0, 45));
+            isMediaLoaded = true;
+            const char* comments = BASS_ChannelGetTags(channel, BASS_TAG_OGG); // get a pointer to the 1st comment
+            if (comments) {
 
-            const char* comments = BASS_ChannelGetTags(stream, BASS_TAG_OGG); // get a pointer to the 1st comment
-            if (comments)
-                while (*comments) {
-                    commentText->SetLabel(comments);
-                    comments += strlen(comments) + 1; // move on to next comment
-                }
+                wxMessageBox(comments);
+            }
+            
             int filterIndex = dialog.GetFilterIndex();
         
     }
@@ -254,18 +285,47 @@ void MyFrame::Notify(wxTimerEvent& event) {
     realPos = BASS_ChannelBytes2Seconds(stream, pos);
     wxString theSongLength = wxString::Format(wxT("%i"), realPos);
     staticText2->SetLabel(theSongLength);
-
-    double volume = static_cast<double>(VolumeSlider->GetValue()) ;
+    //double volume = static_cast<double>(VolumeSlider->GetValue());
+    int posT = (posSlider->GetValue());
+    int offset = posT - realPos;
+   
+    double volume = static_cast<double>(VolumeSlider->GetValue());
+    BASS_SetVolume(volume / 100);
+    
+    if (isPlaying == 1) {
+        posSlider->SetValue(realPos); //movesCursor to music
+        posSlider->SetMax(GetDuration(stream));
+    }
+      
+    
     //BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, volume);
-    BASS_SetVolume(volume/100);
+    
+}
+
+void MyFrame::OnVolChanged(wxScrollEvent& event) {
+    //wxMessageBox("Slider Vol moved");
+
+    double volume = static_cast<double>(VolumeSlider->GetValue());
+    BASS_SetVolume(volume / 100);
+}
+
+void MyFrame::OnPositionChange(wxScrollEvent& event)
+{
+    //wxMessageBox("Slider Pos moved");
+    int realPos;
+
+    QWORD pos = BASS_ChannelGetPosition(stream, BASS_POS_BYTE);
+    realPos = BASS_ChannelBytes2Seconds(stream, pos);
+    int posT = (posSlider->GetValue());
+    int offset = posT - realPos;
+    QWORD loc;
+    loc = BASS_ChannelSeconds2Bytes(stream, posT);
+    BASS_ChannelSetPosition(stream, loc, BASS_POS_BYTE);
+    BASS_ChannelPlay(stream, FALSE);
 }
 
 void MyFrame::OnClose(wxCloseEvent& event)
 {
-    wxMessageBox("test close");
-    Close(true);
-    wxWindow::Close();
-    wxWindow::Destroy();
+   
     Destroy();
-
 }
