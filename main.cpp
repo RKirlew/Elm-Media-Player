@@ -6,7 +6,7 @@
 #include <wx/wx.h>
 #endif
 #include <wx/taskbar.h>
-#include <C:\Users\Raheem\Downloads\bass24\c\bass.h>
+#include <C:\Users\Me\Downloads\bass24\c\bass.h>
 #include <iostream>
 #include <future>
 #include <wx/filename.h>
