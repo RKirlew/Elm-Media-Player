@@ -1,25 +1,33 @@
 #include"imgui.h"
 #include"imgui_impl_glfw.h"
 #include"imgui_impl_opengl3.h"
-
+#include <dirent.h>
 #include<iostream>
 #include<glad/glad.h>
 #include<GLFW/glfw3.h>
 #include <tuple>
 #include <string>
-#include <C:\Users\me\Downloads\bass24\c\bass.h>
+#include <direct.h>
+#include <C:\Users\Raheem\Downloads\bass24\c\bass.h>
 #include "FilePicker.h"
+#include <filesystem>
+#include <vector>
 bool result = FALSE;
 int isPlaying = 0;
 HCHANNEL channel = NULL;
 HSTREAM stream = NULL;
 int pos = 0;
 int gosh = 0;
+static char playListName[128] = "";
 int lengthOfSong = 0;
 int volume = 5;
 bool isMediaLoaded = false;
 bool isMediaPaused = false;
+
+float fft[256];
+
 // Vertex Shader source code
+
 const char* vertexShaderSource = "#version 330 core\n"
 "layout (location = 0) in vec3 aPos;\n"
 "uniform float size;\n"
@@ -52,6 +60,22 @@ int ConvertTime(int n)
 int main()
 {
 	// Initialize GLFW
+	DIR* d;
+	struct dirent* dir;
+	std::vector<std::string> dirlist;
+	int i = 0;
+	d = opendir("Playlists");
+	if (d)
+	{
+		while ((dir = readdir(d)) != NULL)
+		{
+			i++;
+			//cout<<dir->d_name<<endl;
+			dirlist.push_back(dir->d_name);
+		}
+		for (int i = 0; i < dirlist.size(); i++)
+			std::cout << dirlist[i] << std::endl;
+	}
 	glfwInit();
 
 	// Tell GLFW what version of OpenGL we are using 
@@ -81,7 +105,31 @@ int main()
 	// In this case the viewport goes from x = 0, y = 0, to x = 800, y = 800
 	glViewport(0, 0, 900, 900);
 
+	// Create Vertex Shader Object and get its reference
+	GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	// Attach Vertex Shader source to the Vertex Shader Object
+	glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+	// Compile the Vertex Shader into machine code
+	glCompileShader(vertexShader);
 
+	// Create Fragment Shader Object and get its reference
+	GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	// Attach Fragment Shader source to the Fragment Shader Object
+	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+	// Compile the Vertex Shader into machine code
+	glCompileShader(fragmentShader);
+
+	// Create Shader Program Object and get its reference
+	GLuint shaderProgram = glCreateProgram();
+	// Attach the Vertex and Fragment Shaders to the Shader Program
+	glAttachShader(shaderProgram, vertexShader);
+	glAttachShader(shaderProgram, fragmentShader);
+	// Wrap-up/Link all the shaders together into the Shader Program
+	glLinkProgram(shaderProgram);
+
+	// Delete the now useless Vertex and Fragment Shader objects
+	glDeleteShader(vertexShader);
+	glDeleteShader(fragmentShader);
 
 
 
@@ -128,8 +176,8 @@ int main()
 
 	// Variables to be changed in the ImGUI window
 	bool loopMedia = true;
-	
-	float color[4] = { 0.8f, 0.3f, 0.02f, 1.0f };
+	float size = 1.0f;
+	float color[4] = { 3.8f, 10.3f, 0.02f, 1.0f };
 
 
 	// Main while loop
@@ -138,20 +186,25 @@ int main()
 	{
 
 		int realPos;
-
+		const int buf = 4096;
 		QWORD trackpos = BASS_ChannelGetPosition(stream, BASS_POS_BYTE);
 		realPos = BASS_ChannelBytes2Seconds(stream, trackpos);
 		// Specify the color of the background
 		glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 		// Clean the back buffer and assign the new color to it
 		glClear(GL_COLOR_BUFFER_BIT);
+		
 
+	
+		glColor3f(0, 0, 0);
+		glVertex2f(12800, 7200);
 		// Tell OpenGL a new frame is about to begin
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-
+		
+		
 
 		// Tell OpenGL which Shader Program we want to use
 
@@ -160,6 +213,10 @@ int main()
 		// ImGUI window creation
 		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
 		//ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+		
+			// Draw the triangle using the GL_TRIANGLES primitive
+		//glDrawArrays(GL_TRIANGLES, 0, 3);
+		
 		ImGui::Begin("Elm Player", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_MenuBar);
 		// Text that appears in the window
 		if (ImGui::BeginMenuBar())
@@ -190,12 +247,54 @@ int main()
 			}
 			if (ImGui::BeginMenu("Playlist"))
 			{
-				ImGui::MenuItem("Dummy");
+				
+				ImGui::Text("Create New Playlist");
+				
+				
+				if (ImGui::InputTextWithHint("Playlist Name", "Enter Playlist Name", playListName, IM_ARRAYSIZE(playListName), ImGuiInputTextFlags_CallbackCompletion| ImGuiInputTextFlags_EnterReturnsTrue)) {
+					static char playlistFolder[50]=".\\Playlists\\";
+					strcat_s(playlistFolder, playListName);
+					
+					
+					_mkdir(playlistFolder);
+				}
+				if (ImGui::BeginTabBar("PlayListBar"))
+				{
+					if (ImGui::TabItemButton("Add current", ImGuiTabItemFlags_Leading | ImGuiTabItemFlags_NoTooltip)) {
+						ImGui::OpenPopup("MyHelpMenu");
+					}
+
+					if (ImGui::BeginPopup("MyHelpMenu"))
+					{
+						const char* items[] = { "AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG", "HHHH", "IIII", "JJJJ", "KKKK", "LLLLLLL", "MMMM", "OOOOOOO" };
+						static int item_current_idx = 0; // Here we store our selection data as an index.
+						if (ImGui::BeginListBox("Available Playlists"))
+						{
+							for (int n = 0; n <dirlist.size(); n++)
+							{
+								const bool is_selected = (item_current_idx == n);
+								if (ImGui::Selectable(dirlist[n].c_str(), is_selected))
+									item_current_idx = n;
+
+								// Set the initial focus when opening the combo (scrolling + keyboard navigation focus)
+								if (is_selected)
+									ImGui::SetItemDefaultFocus();
+							}
+							ImGui::EndListBox();
+						}
+						ImGui::EndPopup();
+					}
+				}
+				//std::cout << playListName;
 				ImGui::EndMenu();
+
+			
+				
+				
 			}
 			if (ImGui::BeginMenu("Playback"))
 			{
-				ImGui::MenuItem("Dummy");
+				
 				ImGui::EndMenu();
 			}
 			if (ImGui::BeginMenu("Help "))
@@ -241,6 +340,33 @@ int main()
 			}
 		}
 		ImGui::SameLine();
+		
+		
+		
+		BASS_ChannelGetData(stream, fft, BASS_DATA_FFT256);
+		for (int a = 0; a < 256; a++) {
+			//printf("%d: %f\n", a, fft[a]);
+			//size = fft[a];
+			
+			
+			
+			glUseProgram(shaderProgram);
+			glUniform1f(glGetUniformLocation(shaderProgram, "size"), size);
+			glUniform4f(glGetUniformLocation(shaderProgram, "color"), color[0], color[1], color[2], color[3]);
+		}
+		for (int a = 0; a < 512; a++) {
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			// Draw the line
+			glDrawArrays(GL_LINES, 0, 2);
+
+			// Swap front and back buffers
+			
+
+			// Poll for and process events
+			glfwPollEvents();
+			
+		}
 		if (ImGui::Button("Stop", ImVec2(60, 30))) {
 			BASS_ChannelStop(stream);
 		} ImGui::SameLine();
@@ -254,11 +380,13 @@ int main()
 			BASS_ChannelPlay(stream, TRUE);
 
 		}
+		
+		ImGui::PlotLines("Visualizer", fft, IM_ARRAYSIZE(fft));
 		ImGui::End();
 
 		// Export variables to shader
-
-
+		
+		
 
 		// Renders the ImGUI elements
 		ImGui::Render();
@@ -285,3 +413,5 @@ int main()
 	glfwTerminate();
 	return 0;
 }
+
+
