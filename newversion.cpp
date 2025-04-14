@@ -8,7 +8,7 @@
 #include <tuple>
 #include <string>
 #include <direct.h>
-#include <C:\Users\Raheem\Downloads\bass24\c\bass.h>
+#include <../bass24/c/bass.h>
 #include "FilePicker.h"
 #include <filesystem>
 #include <vector>
